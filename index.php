@@ -77,7 +77,7 @@
 			    'url' => $link,
 		    ],
 	    ];
-	    file_put_contents('/Users/bruce/www/personal/test.log', json_encode($data));
+//	    file_put_contents('/Users/bruce/www/personal/test.log', json_encode($data));
 	    header('Content-Type: application/json; charset=UTF-8');
 	    echo json_encode($data);
     }else{
