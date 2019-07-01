@@ -1,14 +1,14 @@
 version: '3'
 services:
   pic-uploader:
-    build: .
-    image: zqiannnn/pic-uploader:1.0
+#    build: .
+    image: zqiannnn/pic-uploader:1.1
     ports:
       - 8080:80
     volumes:
       - ./server.conf:/etc/nginx/conf.d/server.conf
     environment:
-      - STORAGE_TYPE=Qiniu,Netease,Aliyun,Qingcloud
+      - STORAGE_TYPE=Ucloud
 #     10G 10G
       - QINIU_AK=cRGiFvA_G_KR8KzBr4rIL0zc0lGm4nKtIkPmIo-B
       - QINIU_SK=L5GlgWMtnUOqLxjyrNO6e547idlN9L4_KCZ5vaI2
@@ -41,3 +41,4 @@ services:
       - QINGCLOUD_DOMAIN=https://markdown-zq.sh1a.qingstor.com
 #     自定义返回
       - CUSTOM_FORMAT={"url":"{{url}}"}
+      - CURL_TIMEOUT=60
