@@ -1,0 +1,43 @@
+version: '3'
+services:
+  pic-uploader:
+    build: .
+    image: zqiannnn/pic-uploader:1.0
+    ports:
+      - 8080:80
+    volumes:
+      - ./server.conf:/etc/nginx/conf.d/server.conf
+    environment:
+      - STORAGE_TYPE=Qiniu,Netease,Aliyun,Qingcloud
+#     10G 10G
+      - QINIU_AK=cRGiFvA_G_KR8KzBr4rIL0zc0lGm4nKtIkPmIo-B
+      - QINIU_SK=L5GlgWMtnUOqLxjyrNO6e547idlN9L4_KCZ5vaI2
+      - QINIU_BUCKET=markdown
+      - QINIU_DOMAIN=http://pn7xjsy2u.bkt.clouddn.com
+#     50G 20G
+      - NETEASE_AK=f4a256185ae740168cf365e65a03b37a
+      - NETEASE_AS=7f2f59d16e1f498f954e20adbaee995f
+      - NETEASE_BUCKET=markdown-zq
+      - NETEASE_ENDPOINT=nos-eastchina1.126.net
+      - NETEASE_DOMAIN=https://markdown-zq.nos-eastchina1.126.net
+#     无
+      - ALIYUN_AK=LTAIIahRzSJynlZK
+      - ALIYUN_AS=ytkIzs400Yx1q94jCpDyRjgph6llBc
+      - ALIYUN_BUCKET=markdown-zq
+      - ALIYUN_ENDPOINT=oss-cn-shanghai.aliyuncs.com
+      - ALIYUN_DOMAIN=https://markdown-zq.oss-cn-shanghai.aliyuncs.com
+#     20G 20G
+      - UCLOUD_PUBLIC_KEY=TOKEN_43cd0ef4-fd00-49ca-80d0-470fdec4e693
+      - UCLOUD_PRIVATE_KEY=7506ae59-1f77-4be0-88b4-fc10f28b18e3
+      - UCLOUD_PROXY_SUFFIX=.cn-sh2.ufileos.com
+      - UCLOUD_BUCKET=markdown-zq
+      - UCLOUD_ENDPOINT=ufile.ucloud.com.cn
+      - UCLOUD_DOMAIN=http://markdown-zq.cn-sh2.ufileos.com
+#     30G 11G(1Year 190225)
+      - QINGCLOUD_AK=DLDAQRMWENWVSBPZBBPI
+      - QINGCLOUD_SK=DAeyQHQTJXfNPAZbgYjnPHIjhlwifkq6Y7Wl0R2t
+      - QINGCLOUD_BUCKET=markdown-zq
+      - QINGCLOUD_ZONE=sh1a
+      - QINGCLOUD_DOMAIN=https://markdown-zq.sh1a.qingstor.com
+#     自定义返回
+      - CUSTOM_FORMAT={"url":"{{url}}"}
