@@ -15,6 +15,7 @@ class UploadBaidu extends Upload{
 	public $bosConfig;
 	public $bucket;
 	public $domain;
+	public $directory;
 	
     //config from config.php, using static because the parent class needs to use it.
     public static $config;
@@ -24,25 +25,35 @@ class UploadBaidu extends Upload{
     /**
      * Upload constructor.
      *
-     * @param $config
-     * @param $argv
+     * @param $params
      */
-    public function __construct($config, $argv)
+    public function __construct($params)
     {
-	    $tmpArr = explode('\\',__CLASS__);
-	    $className = array_pop($tmpArr);
-	    $ServerConfig = $config['storageTypes'][strtolower(substr($className,6))];
+	    $ServerConfig = $params['config']['storageTypes'][$params['uploadServer']];
 	    
-	    $this->bosConfig = $ServerConfig['bosConfig'];
+	    $this->bosConfig = [
+		    'credentials' => [
+			    'accessKeyId' => $ServerConfig['accessKeyId'],
+			    'secretAccessKey' => $ServerConfig['secretAccessKey'],
+		    ],
+		    'endpoint' => $ServerConfig['endpoint'],
+	    ];
 	    $this->bucket = $ServerConfig['bucket'];
 	    $this->domain = $ServerConfig['domain'] ?? '';
-	    
-        $this->argv = $argv;
-        static::$config = $config;
+	    if(!isset($ServerConfig['directory']) || ($ServerConfig['directory']=='' && $ServerConfig['directory']!==false)){
+		    //如果没有设置，使用默认的按年/月/日方式使用目录
+		    $this->directory = date('Y/m/d');
+	    }else{
+		    //设置了，则按设置的目录走
+		    $this->directory = trim($ServerConfig['directory'], '/');
+	    }
+	
+	    $this->argv = $params['argv'];
+	    static::$config = $params['config'];
     }
 	
 	/**
-	 * Upload images to Netease Cloud
+	 * Upload images to Baidu BOS(Baidu Object Storage)
 	 * @param $key
 	 * @param $uploadFilePath
 	 *
@@ -50,8 +61,11 @@ class UploadBaidu extends Upload{
 	 * @throws \Exception
 	 */
 	public function upload($key, $uploadFilePath){
-	    $bosClient = new BosClient($this->bosConfig);
 	    try {
+		    $bosClient = new BosClient($this->bosConfig);
+		    if($this->directory){
+			    $key = $this->directory. '/' . $key;
+		    }
 		    $bosClient->putObjectFromFile($this->bucket, $key, $uploadFilePath);
 		    if(!$this->domain){
 		    	$endpoint = $this->bosConfig['endpoint'];
@@ -60,9 +74,9 @@ class UploadBaidu extends Upload{
 		    }
 		    $link = $this->domain.'/'.$key;
 	    } catch (BceClientException $e) {
-		    //上传数错，记录错误日志
-		    $link = $e->getMessage()."\n";
-		    $this->writeLog($link, 'error_log');
+		    //上传出错，记录错误日志(为了保证统一处理那里不出错，虽然报错，但这里还是返回对应格式)
+		    $link = $e->getMessage();
+		    $this->writeLog(date('Y-m-d H:i:s').'(BaiduCloud) => '.$e->getMessage(), 'error_log');
 	    }
 		return $link;
     }

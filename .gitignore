@@ -4,5 +4,9 @@
 /.tmp/
 /logs/
 /uploader/token/
-/uploader/UploadWeibo.php
-docker-compose.yml
+/config/config-local.php
+/config/.settings
+/config/.config.json
+/uploads
+/uploader/UploadCoroutine.php
+/db

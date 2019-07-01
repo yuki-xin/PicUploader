@@ -19,6 +19,7 @@ class UploadAliyun extends Upload{
     //即domain，域名
     public $endpoint;
     public $domain;
+    public $directory;
     //config from config.php, using static because the parent class needs to use it.
     public static $config;
     //arguments from php client, the image absolute path
@@ -27,27 +28,32 @@ class UploadAliyun extends Upload{
     /**
      * Upload constructor.
      *
-     * @param $config
-     * @param $argv
+     * @param $params
      */
-    public function __construct($config, $argv)
+    public function __construct($params)
     {
-	    $tmpArr = explode('\\',__CLASS__);
-	    $className = array_pop($tmpArr);
-	    $ServerConfig = $config['storageTypes'][strtolower(substr($className,6))];
+	    $ServerConfig = $params['config']['storageTypes'][$params['uploadServer']];
 	    
         $this->accessKey = $ServerConfig['accessKey'];
         $this->secretKey = $ServerConfig['accessSecret'];
         $this->bucket = $ServerConfig['bucket'];
         $this->endpoint = $ServerConfig['endpoint'];
 	    $this->domain = $ServerConfig['domain'] ?? '';
-
-        $this->argv = $argv;
-        static::$config = $config;
+	
+	    if(!isset($ServerConfig['directory']) || ($ServerConfig['directory']=='' && $ServerConfig['directory']!==false)){
+		    //如果没有设置，使用默认的按年/月/日方式使用目录
+		    $this->directory = date('Y/m/d');
+	    }else{
+		    //设置了，则按设置的目录走
+		    $this->directory = trim($ServerConfig['directory'], '/');
+	    }
+	
+	    $this->argv = $params['argv'];
+	    static::$config = $params['config'];
     }
 	
 	/**
-	 * Upload images to Netease Cloud
+	 * Upload images to Aliyun OSS(Object Storage Service)
 	 * @param $key
 	 * @param $uploadFilePath
 	 *
@@ -55,22 +61,24 @@ class UploadAliyun extends Upload{
 	 */
 	public function upload($key, $uploadFilePath){
 	    try {
+	    	if($this->directory){
+			    $key = $this->directory. '/' . $key;
+		    }
 		    $oss = new OssClient($this->accessKey, $this->secretKey, $this->endpoint);
 		    $retArr = $oss->uploadFile($this->bucket, $key, $uploadFilePath);
-		    if(isset($retArr['info']['url'])){
-		    	// http://bruce-markdown.oss-cn-shenzhen.aliyuncs.com
-			    $defaultDomain = 'http://'.$this->bucket.'.'.$this->endpoint;
-			    $link = $retArr['info']['url'];
-			    if($this->domain){
-				    $link = str_replace($defaultDomain, $this->domain, $link);
-			    }
-		    }else{
+		    if(!isset($retArr['info']['url'])){
 			    throw new \Exception(var_export($retArr, true)."\n");
 		    }
+		    // http://bruce-markdown.oss-cn-shenzhen.aliyuncs.com
+		    $defaultDomain = 'http://'.$this->bucket.'.'.$this->endpoint;
+		    $link = $retArr['info']['url'];
+		    if($this->domain){
+			    $link = str_replace($defaultDomain, $this->domain, $link);
+		    }
 	    } catch (\Exception $e) {
-		    //上传数错，记录错误日志
-		    $link = $e->getMessage()."\n";
-		    $this->writeLog($link, 'error_log');
+		    //上传出错，记录错误日志(为了保证统一处理那里不出错，虽然报错，但这里还是返回对应格式)
+		    $link = $e->getMessage();
+		    $this->writeLog(date('Y-m-d H:i:s').'(Aliyun) => '.$e->getMessage(), 'error_log');
 	    }
 	    return $link;
     }

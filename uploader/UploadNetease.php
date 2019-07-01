@@ -18,6 +18,7 @@ class UploadNetease extends Upload{
     //即domain，域名
     public $endPoint;
     public $domain;
+    public $directory;
     //config from config.php, using static because the parent class needs to use it.
     public static $config;
     //arguments from php client, the image absolute path
@@ -26,14 +27,11 @@ class UploadNetease extends Upload{
     /**
      * Upload constructor.
      *
-     * @param $config
-     * @param $argv
+     * @param $params
      */
-    public function __construct($config, $argv)
+    public function __construct($params)
     {
-	    $tmpArr = explode('\\',__CLASS__);
-	    $className = array_pop($tmpArr);
-	    $ServerConfig = $config['storageTypes'][strtolower(substr($className,6))];
+	    $ServerConfig = $params['config']['storageTypes'][$params['uploadServer']];;
 	    
         $this->accessKey = $ServerConfig['accessKey'];
         $this->secretKey = $ServerConfig['accessSecret'];
@@ -41,9 +39,16 @@ class UploadNetease extends Upload{
         //endPoint不是域名，外链域名是 bucket.'.'.endPoint
         $this->endPoint = $ServerConfig['endPoint'];
 	    $this->domain = $ServerConfig['domain'] ?? '';
-
-        $this->argv = $argv;
-        static::$config = $config;
+	    if(!isset($ServerConfig['directory']) || ($ServerConfig['directory']=='' && $ServerConfig['directory']!==false)){
+		    //如果没有设置，使用默认的按年/月/日方式使用目录
+		    $this->directory = date('Y/m/d');
+	    }else{
+		    //设置了，则按设置的目录走
+		    $this->directory = trim($ServerConfig['directory'], '/');
+	    }
+	    
+        $this->argv = $params['argv'];
+        static::$config = $params['config'];
     }
 	
 	/**
@@ -61,17 +66,19 @@ class UploadNetease extends Upload{
 		    $options[NosClient::NOS_HEADERS]['Cache-Control'] = 'max-age=31536000';
 		    $options[NosClient::NOS_HEADERS]['Content-Disposition'] = 'attachment; filename="'.$newFileName.'"';
 		
+		    if($this->directory){
+			    $key = $this->directory. '/' . $key;
+		    }
 		    $nosClient = new NosClient($this->accessKey, $this->secretKey, $this->endPoint);
 		    $nosClient->uploadFile($this->bucket, $key, $uploadFilePath, $options);
 		    if(!$this->domain){
-			    //domain => http://markdown-bucket.nos-eastchina1.126.net
 			    $this->domain = 'http://'.$this->bucket.'.'.$this->endPoint;
 		    }
 		    $link = $this->domain.'/'.$key;
 	    } catch (NosException $e) {
-		    //上传数错，记录错误日志
-		    $link = $e->getMessage()."\n";
-		    $this->writeLog($link, 'error_log');
+		    //上传出错，记录错误日志(为了保证统一处理那里不出错，虽然报错，但这里还是返回对应格式)
+		    $link = $e->getMessage();
+		    $this->writeLog(date('Y-m-d H:i:s').'(NeteaseCloud) => '.$e->getMessage(), 'error_log');
 	    }
         return $link;
     }

@@ -20,6 +20,7 @@ class UploadQingcloud extends Upload{
 	//区域
 	public $zone;
 	public $domain;
+	public $directory;
 	//config from config.php, using static because the parent class needs to use it.
 	public static $config;
 	//arguments from php client, the image absolute path
@@ -28,14 +29,11 @@ class UploadQingcloud extends Upload{
 	/**
 	 * Upload constructor.
 	 *
-	 * @param $config
-	 * @param $argv
+	 * @param $params
 	 */
-	public function __construct($config, $argv)
+	public function __construct($params)
 	{
-		$tmpArr = explode('\\',__CLASS__);
-		$className = array_pop($tmpArr);
-		$ServerConfig = $config['storageTypes'][strtolower(substr($className,6))];
+		$ServerConfig = $params['config']['storageTypes'][$params['uploadServer']];;
 		
 		$this->accessKeyId = $ServerConfig['accessKeyId'];
 		$this->secretAccessKey = $ServerConfig['secretAccessKey'];
@@ -43,13 +41,20 @@ class UploadQingcloud extends Upload{
 		//endPoint不是域名，外链域名是 bucket.'.'.endPoint
 		$this->zone = $ServerConfig['zone'];
 		$this->domain = $ServerConfig['domain'] ?? '';
+		if(!isset($ServerConfig['directory']) || ($ServerConfig['directory']=='' && $ServerConfig['directory']!==false)){
+			//如果没有设置，使用默认的按年/月/日方式使用目录
+			$this->directory = date('Y/m/d');
+		}else{
+			//设置了，则按设置的目录走
+			$this->directory = trim($ServerConfig['directory'], '/');
+		}
 		
-		$this->argv = $argv;
-		static::$config = $config;
+		$this->argv = $params['argv'];
+		static::$config = $params['config'];
 	}
 	
 	/**
-	 * Upload images to QingCloud
+	 * Upload images to QingCloud QingStor
 	 * @param $key
 	 * @param $uploadFilePath
 	 *
@@ -62,6 +67,9 @@ class UploadQingcloud extends Upload{
 			$service = new QingStor($config);
 			$bucket = $service->Bucket($this->bucket, $this->zone);
 			
+			if($this->directory){
+				$key = $this->directory. '/' . $key;
+			}
 			// Put object
 			$body = file_get_contents($uploadFilePath);
 			$res = $bucket->putObject($key, ['body' => $body]);
@@ -76,9 +84,9 @@ class UploadQingcloud extends Upload{
 				throw new \Exception('error_code => '.$res->code."\nerror_message => ".$res->message, $res->statusCode);
 			}
 		} catch (\Exception $e) {
-			//上传数错，记录错误日志
-			$link = $e->getMessage()."\n";
-			$this->writeLog($link, 'error_log');
+			//上传出错，记录错误日志(为了保证统一处理那里不出错，虽然报错，但这里还是返回对应格式)
+			$link = $e->getMessage();
+			$this->writeLog(date('Y-m-d H:i:s').'(QingCloud) => '.$e->getMessage(), 'error_log');
 		}
 		return $link;
 	}

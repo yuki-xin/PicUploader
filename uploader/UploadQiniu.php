@@ -20,6 +20,8 @@ class UploadQiniu extends Common {
     public $bucket;
     //七牛对外开放域名
     public $domain;
+    public $directory;
+    
     //config from config.php, using static because the parent class needs to use it.
     public static $config;
     //arguments from php client, the image absolute path
@@ -28,54 +30,27 @@ class UploadQiniu extends Common {
     /**
      * Upload constructor.
      *
-     * @param $config
-     * @param $argv
+     * @param $params
      */
-    public function __construct($config, $argv)
+    public function __construct($params)
     {
-	    $tmpArr = explode('\\',__CLASS__);
-	    $className = array_pop($tmpArr);
-	    $ServerConfig = $config['storageTypes'][strtolower(substr($className,6))];
+	    $ServerConfig = $params['config']['storageTypes'][$params['uploadServer']];
 	    
         $this->accessKey = $ServerConfig['AK'];
         $this->secretKey = $ServerConfig['SK'];
         $this->bucket = $ServerConfig['bucket'];
         $this->domain = $ServerConfig['domain'];
-
-        $this->argv = $argv;
-        static::$config = $config;
-    }
 	
-	/**
-	 * 上传文件到七牛云
-	 * @param $key
-	 * @param $uploadFilePath
-	 *
-	 * @return string
-	 * @throws \Exception
-	 */
-	public function upload($key, $uploadFilePath){
-		try {
-			//获取七牛token
-			$token = $this->getToken();
-			// 构建 UploadManager 对象
-			$uploadMgr = new UploadManager();
-			// 调用 UploadManager 的 putFile 方法进行文件的上传。
-			list($ret, $err) = $uploadMgr->putFile($token, $key, $uploadFilePath);
-			if ($err !== null) {
-				throw new \Exception(var_export($err, true)."\n");
-			} else {
-				//拼接域名和优化参数成为一个可访问的外链
-				$link = $this->domain . '/' . $ret['key'];
-				$optimize = isset(static::$config['optimize']) ? static::$config['optimize'] : '';
-				$optimize && $link .= $optimize;
-			}
-		}catch (\Exception $e){
-			//上传数错，记录错误日志
-			$link = $e->getMessage()."\n";
-			$this->writeLog($link, 'error_log');
-		}
-		return $link;
+	    if(!isset($ServerConfig['directory']) || ($ServerConfig['directory']=='' && $ServerConfig['directory']!==false)){
+		    //如果没有设置，使用默认的按年/月/日方式使用目录
+		    $this->directory = date('Y/m/d');
+	    }else{
+		    //设置了，则按设置的目录走
+		    $this->directory = trim($ServerConfig['directory'], '/');
+	    }
+
+        $this->argv = $params['argv'];
+        static::$config = $params['config'];
     }
 
     /**
@@ -105,4 +80,39 @@ class UploadQiniu extends Common {
         }
         return $token;
     }
+	
+	/**
+	 * Upload Images to Qiniu Kodo
+	 * @param $key
+	 * @param $uploadFilePath
+	 *
+	 * @return string
+	 * @throws \Exception
+	 */
+	public function upload($key, $uploadFilePath){
+		try {
+			//获取七牛token
+			$token = $this->getToken();
+			// 构建 UploadManager 对象
+			$uploadMgr = new UploadManager();
+			if($this->directory){
+				$key = $this->directory. '/' . $key;
+			}
+			// 调用 UploadManager 的 putFile 方法进行文件的上传。
+			list($ret, $err) = $uploadMgr->putFile($token, $key, $uploadFilePath);
+			if ($err !== null) {
+				throw new \Exception(var_export($err, true)."\n");
+			} else {
+				//拼接域名和优化参数成为一个可访问的外链
+				$link = $this->domain . '/' . $ret['key'];
+				$optimize = isset(static::$config['optimize']) ? static::$config['optimize'] : '';
+				$optimize && $link .= $optimize;
+			}
+		}catch (\Exception $e){
+			//上传出错，记录错误日志(为了保证统一处理那里不出错，虽然报错，但这里还是返回对应格式)
+			$link = $e->getMessage();
+			$this->writeLog(date('Y-m-d H:i:s').'(Qiniu) => '.$e->getMessage(), 'error_log');
+		}
+		return $link;
+	}
 }

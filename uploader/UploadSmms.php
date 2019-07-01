@@ -9,97 +9,104 @@
 namespace uploader;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\GuzzleException;
 
 class UploadSmms extends Common {
+	//api url
+	public $baseUri;
+	//代理url
+	public $proxy;
+	
     //config from config.php, using static because the parent class needs to use it.
     public static $config;
     //arguments from php client, the image absolute path
     public $argv;
-    //云服务器配置
-    public $serverConfig;
 
     /**
      * Upload constructor.
      *
-     * @param $config
-     * @param $argv
+     * @param $params
      */
-    public function __construct($config, $argv)
+    public function __construct($params)
     {
-	    $tmpArr = explode('\\',__CLASS__);
-	    $className = array_pop($tmpArr);
-        $this->serverConfig = $config['storageTypes'][strtolower(substr($className,6))];;
-        $this->argv = $argv;
-        static::$config = $config;
+        $ServerConfig = $params['config']['storageTypes'][$params['uploadServer']];;
+	    //baseUri一定要斜杠结尾
+	    $this->baseUri = 'https://sm.ms/api/';
+	    $this->proxy = $ServerConfig['proxy'] ?? '';
+        
+        $this->argv = $params['argv'];
+        static::$config = $params['config'];
     }
 	
 	/**
 	 * Upload image to http://sm.ms
 	 * @param $key  由于sm.ms无法自己指定key(主要是没有账号系统怕跟别人重复，所以都是它重命名)，所以key在这里不使用。
 	 * @param $uploadFilePath
+	 * @param $originFilename
 	 *
 	 * @return array
-	 * @throws \GuzzleHttp\Exception\GuzzleException
+	 * @throws GuzzleException
 	 */
-	public function upload($key, $uploadFilePath){
-        $link = [];
-        $GuzzleConfig = [
-	        'base_uri' => $this->serverConfig['baseUrl'],
-	        'timeout'  => 10.0,
-        ];
-        if(isset($this->serverConfig['proxy']) && $this->serverConfig['proxy']){
-	        $GuzzleConfig['proxy'] = $this->serverConfig['proxy'];
-        }
-        //实例化GuzzleHttp
-        $client = new Client($GuzzleConfig);
-		
-		$fileSize = filesize($uploadFilePath);
-		if($fileSize > 5000000){
-			$imgWidth = isset(static::$config['imgWidth']) && static::$config['imgWidth'] ? static::$config['imgWidth'] : 0;
-			if($imgWidth){
-				$error = 'Due to https://sm.ms restriction, you can\'t upload photos lager than 5M, this photo is '.($fileSize/1000000).'M after compress.'."\n";
-			}else{
-				$error = "Due to https://sm.ms restriction, you can't upload photos lager than 5M, and you didn't set the compress option at the config file.\n";
+	public function upload($key, $uploadFilePath, $originFilename){
+		try{
+			$fileSize = filesize($uploadFilePath);
+			if($fileSize > 5242880){
+				$useWatermark = static::$config['watermark']['useWatermark'] ?? 0;
+				$fileSizeHuman = (new Common())->getFileSizeHuman($uploadFilePath);
+				$errMsg = 'Smms限制最大文件为10M，你上传的文件'.($useWatermark ? '压缩后': '').'为'.$fileSizeHuman."！\n";
+				throw new \Exception($errMsg);
+			}
+			if(strpos((new Common())->getMimeType($uploadFilePath), 'image')===false){
+				$errMsg = 'Smms只能上传图片，你上传的文件“'.$originFilename.'”不是图片，无法上传！';
+				throw new \Exception($errMsg);
 			}
 			
-			$this->writeLog($error, 'error_log');
-		}else{
-			try{
-				//upload?ssl=1
-				//post file to https://sm.ms
-				$response = $client->request('POST', 'upload?ssl=1', [
-					'multipart' => [
-						[
-							'name'     => 'smfile',
-							'contents' => fopen($uploadFilePath, 'r')
-						],
-					]
-				]);
-				
-				$string = $response->getBody()->getContents();
-				if($response->getReasonPhrase() != 'OK'){
-					throw new \Exception($string);
-				}else{
-					$returnArr = json_decode($string, true);
-					if($returnArr['code'] == 'success'){
-						$data = $returnArr['data'];
-						$deleteLink = 'Delete Link: '.$data['delete'];
-						// $link .= $this->formatLink($data['url'], $originFilename);
-						$link = [
-							'link' => $data['url'],
-							'delLink' => $deleteLink,
-						];
-						return $link;
-					}
-				}
-			}catch (\Exception $e){
-				//上传数错，记录错误日志(为了保证统一处理那里不出错，虽然报错，但这里还是返回对应格式)
-				$link = [
-					'link' => $e->getMessage()."\n",
-					'delLink' => '',
-				];
-				$this->writeLog($link, 'error_log');
+			$GuzzleConfig = [
+				'base_uri' => $this->baseUri,
+				'timeout'  => 30.0,
+			];
+			if($this->proxy){
+				$GuzzleConfig['proxy'] = $this->proxy;
 			}
+			//实例化GuzzleHttp
+			$client = new Client($GuzzleConfig);
+			//upload?ssl=1
+			//post file to https://sm.ms
+			$response = $client->request('POST', 'upload?ssl=1', [
+				'multipart' => [
+					[
+						'name'     => 'smfile',
+						'contents' => fopen($uploadFilePath, 'r')
+					],
+				]
+			]);
+			
+			$string = $response->getBody()->getContents();
+			
+			if($response->getReasonPhrase() != 'OK'){
+				throw new \Exception($string);
+			}
+			
+			$returnArr = json_decode($string, true);
+			if($returnArr['code'] != 'success'){
+				throw new \Exception($string);
+			}
+			$data = $returnArr['data'];
+			$deleteLink = 'Delete Link: '.$data['delete'];
+			// $link .= $this->formatLink($data['url'], $originFilename);
+			$link = [
+				'link' => $data['url'],
+				'delLink' => $deleteLink,
+			];
+			
+		}catch (\Exception $e){
+			//上传出错，记录错误日志(为了保证统一处理那里不出错，虽然报错，但这里还是返回对应格式)
+			$link = [
+				'link' => $e->getMessage(),
+				'delLink' => '',
+			];
+			$this->writeLog(date('Y-m-d H:i:s').'(Smms) => '.$e->getMessage(), 'error_log');
 		}
+		return $link;
     }
 }
